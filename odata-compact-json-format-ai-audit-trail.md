@@ -220,6 +220,77 @@ is not in the repository. Results:
 
 ---
 
+## Session 2 — 2026-08-26
+
+Branch `odata-compact-json-format`, rebased onto Heiko Theißen's commits of
+2026-08-21. Two changes, both editorial in origin, one of them substantive in
+effect.
+
+### Example formatting — HTTP and payload split into separate blocks
+
+Every example that combined an HTTP request line, or a `Content-Type` header,
+with its JSON payload in a single fenced block was split into two: the HTTP
+portion in an untagged block, the payload in a block tagged `json`.
+
+Nineteen blocks across six files were affected. Three untagged blocks were
+deliberately left alone, having no payload to separate: the `Content-Type`
+example in section 4.1, the bare context URL in section 5.3, and the document
+conventions example in section 1.1.3.
+
+Verified afterwards: 36 of the 37 `json`-tagged blocks parse as standalone JSON.
+The one that does not is the `Capabilities.SupportedFormats` annotation in
+section 3.2, which is deliberately a fragment — a name/value pair shown out of
+context, as the sibling specifications also show annotations. Pandoc renders it
+without lexer errors, so `npm run select ".json .er"` does not flag it.
+
+Committed by Hubert as `446c109`, together with the regenerated `docs/` output.
+
+### Review finding — the `value` name at the root of a message body
+
+A TC reviewer objected to this sentence in section 7.1:
+
+> At the root of the message body the name `value` is also recognized, with the
+> same meaning, for compatibility with [OData-JSON], as required by the superset
+> principle.
+
+**The objection was correct.** [OData-JSON](#ODataJSON) uses `value` as the name
+of the message body's value for a single primitive value and for collections
+only. Where the payload is a single entity, a single complex value or a single
+entity reference, the message body *is* the instance, and a name/value pair
+named `value` there is an ordinary property. The withdrawn sentence granted
+`value` at *every* root, which extended [OData-JSON](#ODataJSON) rather than
+accommodating it — and the appeal to the superset principle was misplaced, since
+where [OData-JSON](#ODataJSON) never produces `value` there is nothing to be
+compatible with.
+
+Worse, the sentence reintroduced the very ambiguity the section went on to warn
+about. Had `value` been the wrapper's value name at a single-entity root, then
+
+    {"@context": "…#Customers/$entity", "value": […]}
+
+would have been at once the positional representation of an entity and the
+[OData-JSON](#ODataJSON) representation of an entity with a collection-valued
+property named `value`, with nothing to distinguish them.
+
+**Resolution.** `value` is now recognized *by reference* rather than by
+enumeration: "wherever [OData-JSON](#ODataJSON) specifies that the message body
+contains a name/value pair whose name is `value`". Defined that way the
+permission provably cannot exceed [OData-JSON](#ODataJSON), which was the
+reviewer's concern. Everywhere else `value` is a property name and a receiver
+MUST NOT read it as a wrapper's value. See D‑08, restated.
+
+Four places changed: section 7.1 (the rule and its rationale), section 4.2
+(the same claim stated in passing), example 20's caption (which now says *why*
+`value` is admissible there — the body is a collection), and conformance
+clauses 5.2 and 17.
+
+**A second collision, newly recorded and not resolved.** `_` is exposed to the
+same problem in principle: a type declaring, or an open type carrying, a
+property named `_` is indistinguishable from a wrapper object by name alone.
+The draft does not reserve `_` in the model. Added to open issue 4.
+
+---
+
 ## Decision Register
 
 Status values: **TC** — decided by the TC or by the editor in this session;
@@ -236,7 +307,7 @@ section 14.
 | D‑05 | A positional array MUST have **exactly** as many items as the list — no omission, no truncation, no reordering. To send fewer properties, narrow the select-list. | Assistant | Provisional | §5.1 |
 | D‑06 | One uniform **wrapper object** carries annotations and control information wherever a value may appear: root, array position, collection member. | Hubert, Q1 | TC | §7.1 |
 | D‑07 | Property annotations **drop the property-name prefix**: `Orders@count` becomes `@count`, because the position identifies the property. | Hubert, Q1 | TC | §7.3 |
-| D‑08 | The wrapper's value is named **`_`**; `value` is still recognized at the root of the message body for superset compatibility. | Hubert floated `_`; assistant found a second reason — a nested `value` is ambiguous with a property named `value` | Provisional | §7.1, open issue 4 |
+| D‑08 | The wrapper's value is named **`_`**. `value` is recognized **only** where [OData-JSON] itself specifies it as the message body's value name — never where [OData-JSON] represents the body as the instance itself. | Hubert floated `_`; **narrowed in session 2** after a TC reviewer found the original wording extended [OData-JSON] and made a single-entity body ambiguous | Provisional | §7.1, open issue 4 |
 | D‑09 | A wrapper object **MUST NOT** carry data properties by name — only annotations and the value. | Assistant, to keep wrappers distinguishable from JSON-format objects | Provisional | §7.1, open issue 6 |
 | D‑10 | **PATCH** conveys "which properties to update" through the select-list; a property not in the positional property list is unchanged, one present with `null` is set to null. **No sentinel value.** | Assistant, consequence of D‑02 | Provisional | §8.4 |
 | D‑11 | Request bodies **MAY carry a context URL**, using response templates unchanged. Without one, the list is the default selection of the target type. | Assistant, required by D‑02 for requests | Provisional — **needs a Part 1 change** | §8.1, open issue 1 |
@@ -284,7 +355,9 @@ some of them drive JSON format changes?
 
 ### 2. Naming and encoding — cheap to change now, expensive after CSD01
 
-- **Open issue 4:** `_` as the value name (D‑08). Specified as you floated it.
+- **Open issue 4:** the value name (D‑08). Narrowed in session 2 to what
+  [OData-JSON] itself permits. Still open: `_` carries the same collision risk
+  that `value` does, and is not reserved in the model.
 - **Open issue 5:** `{}` for "not applicable" (D‑13). `null` is two bytes shorter
   but not lossless.
 - **Open issue 6:** whether wrapper objects may carry named properties (D‑09).
