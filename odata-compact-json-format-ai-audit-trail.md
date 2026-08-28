@@ -253,14 +253,14 @@ A TC reviewer objected to this sentence in section 7.1:
 > same meaning, for compatibility with [OData-JSON], as required by the superset
 > principle.
 
-**The objection was correct.** [OData-JSON](#ODataJSON) uses `value` as the name
+**The objection was correct.** OData-JSON uses `value` as the name
 of the message body's value for a single primitive value and for collections
 only. Where the payload is a single entity, a single complex value or a single
 entity reference, the message body *is* the instance, and a name/value pair
 named `value` there is an ordinary property. The withdrawn sentence granted
-`value` at *every* root, which extended [OData-JSON](#ODataJSON) rather than
+`value` at *every* root, which extended OData-JSON rather than
 accommodating it — and the appeal to the superset principle was misplaced, since
-where [OData-JSON](#ODataJSON) never produces `value` there is nothing to be
+where OData-JSON never produces `value` there is nothing to be
 compatible with.
 
 Worse, the sentence reintroduced the very ambiguity the section went on to warn
@@ -269,13 +269,13 @@ about. Had `value` been the wrapper's value name at a single-entity root, then
     {"@context": "…#Customers/$entity", "value": […]}
 
 would have been at once the positional representation of an entity and the
-[OData-JSON](#ODataJSON) representation of an entity with a collection-valued
+OData-JSON representation of an entity with a collection-valued
 property named `value`, with nothing to distinguish them.
 
 **Resolution.** `value` is now recognized *by reference* rather than by
-enumeration: "wherever [OData-JSON](#ODataJSON) specifies that the message body
+enumeration: "wherever OData-JSON specifies that the message body
 contains a name/value pair whose name is `value`". Defined that way the
-permission provably cannot exceed [OData-JSON](#ODataJSON), which was the
+permission provably cannot exceed OData-JSON, which was the
 reviewer's concern. Everywhere else `value` is a property name and a receiver
 MUST NOT read it as a wrapper's value. See D‑08, restated.
 
@@ -288,6 +288,129 @@ clauses 5.2 and 17.
 same problem in principle: a type declaring, or an open type carrying, a
 property named `_` is indistinguishable from a wrapper object by name alone.
 The draft does not reserve `_` in the model. Added to open issue 4.
+
+---
+
+## Session 3 — 2026-08-26
+
+Continuation of the session 2 review thread. Sources had meanwhile been split one
+file per section and renumbered.
+
+### The value name, settled: `$`
+
+Session 2 recorded that `_` collides — it is a valid simple identifier, so a type
+declaring, or an open type carrying, a property named `_` is indistinguishable
+from a wrapper object. The TC had already identified this independently, and had
+discussed `$` and the empty string as replacements.
+
+The assistant initially argued for `@`, on the grounds that every other member of
+a wrapper object already begins with `@`, which would make the wrapper-object rule
+syntactic: *a wrapper object is a JSON object all of whose names begin with `@`*.
+
+**That argument was withdrawn**, for two reasons that emerged in discussion:
+
+1. Hubert relayed a further TC direction — that a wrapper object should be able to
+   carry named properties alongside the positional value (see below). That removes
+   the universal-quantification rule the `@` case rested on, so the discriminator
+   has to become the *presence* of the reserved name rather than a property of all
+   names. For an existence test, the reserved name wants to be maximally distinct
+   from its neighbours, not a prefix of them.
+2. OData-JSON parsers conventionally separate annotations from
+   properties by testing whether a name begins with `@`. A value named `@` would
+   land in the annotation branch of existing code, silently — a concrete
+   implementation hazard, not merely a stylistic one.
+
+The decisive precedent is OData-CSDL JSON, which solves the identical
+problem the identical way and, crucially, in objects that mix all three kinds of
+member the compact format now needs together:
+
+```json
+"Product": {
+  "$Kind": "EntityType",
+  "$Key": [ "ID" ],
+  "ID":   { "$Type": "Edm.Int32" },
+  "@UI.DisplayName": { "$Path": "Name" }
+}
+```
+
+`$`-prefixed fixed names, `@`-prefixed annotations, and model-defined names, in one
+object. Adopting `$` gives the compact format the same three-way namespace split
+that OData already uses elsewhere. Recorded as D‑08, now **TC**-decided.
+
+The empty string was rejected: legal and collision-free, but `""` and `" "` are
+indistinguishable in fonts, diffs and pasted payloads, so a stray space produces
+valid JSON with the wrong meaning and no diagnostic; it cannot be named in prose
+or spotted in an example; and its only advantage is one byte per wrapper object,
+in a place where wrapper objects are not what dominates payload size.
+
+Applied mechanically across the eight source files — 44 occurrences. Verified
+afterwards that Pandoc's `tex_math_dollars` extension does not capture any of
+them: every `$` is inside a code span or fenced block, and the generated HTML
+contains no MathJax markup.
+
+### Extended wrapper objects — direction recorded, not drafted
+
+The TC wants an instance whose properties cannot all be placed in the select-list
+— typically an open type carrying dynamic properties — to keep its positional
+representation, rather than falling back wholesale to the
+OData-JSON object form as section "Open Types and Dynamic Properties" currently requires. The shape is: leading
+annotations, then `$` holding the positional representation, then the remaining
+properties by name.
+
+This supersedes D‑09 and largely resolves open issue 6 in the affirmative, but the
+normative text has not been written. Four points were identified as needing
+settlement first, and are recorded under open issue 6: the full recognition rule
+(two-part, since a wrapper carrying only annotations has no `$`); which properties
+may appear by name; the ordering constraint, which currently requires the value to
+be last in a wrapper; and whether the same shape should extend to derived types.
+
+A related consequence was noted for open issue 5: once a wrapper is recognized by
+the presence of `$`, the empty object `{}` — used for "not applicable" — is no
+longer a wrapper by the definition, and its meaning becomes a convention riding on
+an edge case rather than a consequence. That needs restating too.
+
+
+### Derived types, open types and the extended wrapper — drafted
+
+Hubert put four points to the TC's thinking, and the answers settled the design.
+
+**Derived types.** The assistant offered three shapes and recommended grouping by
+the type cast, so that one position per derived type would hold either a nested
+array or `{}`. The TC had reached a different and better answer: *the wrapper
+carries `@type` ahead of the positional representation, and the consumer computes
+the positional property list for that type from the context URL.* Peer subtypes
+then cost nothing on instances that are not of that type — no gaps, no
+placeholders, no extra nesting — which is the most compact of the four candidates
+and, compactness being the point of the format, the right one. Recorded as D‑26,
+superseding D‑14.
+
+Two consequences were written in that the discussion had not yet priced:
+
+- **`type` becomes load-bearing.** It is no longer informative: without it the
+  receiver cannot compute the positional property list, so it cannot decode the
+  array at all. The draft now requires it for any instance whose list differs
+  from that of the context URL's declared type, **irrespective of the `metadata`
+  format parameter** — that is, `metadata=none` does not excuse omitting it, for
+  the same reason it does not excuse omitting `context`. section "Payload Ordering Constraints" already placed `type` before the value; the draft
+  now says why that ordering matters rather than treating it as convention.
+- **Row shape is now heterogeneous by design.** Instances in one collection may
+  have positional representations of different lengths and meanings. This bears
+  on open issue 12, and on any future column-oriented variant contemplated by
+  open issue 7.
+
+**Open types.** `{}` is retained, but only here: a selected dynamic property that
+an instance does not have. The draft now states the contrast explicitly, because
+the two cases look similar and behave differently — a type cast says *which
+instances a property applies to*, so a non-applicable instance simply has a
+shorter list; a selected dynamic property says nothing about which instances have
+it, so it is in everyone's list and `{}` reports its absence.
+
+**Extended wrapper.** Drafted as agreed: annotations, then `$`, then properties by
+name; a property may not appear both positionally and by name. The wholesale
+fallback to the OData-JSON object form in section "Open Types and Dynamic Properties" is gone.
+
+Files touched: section "Payload Ordering Constraints", section "Determining the Positional Property List" (new step 3), section "Grouping of Select Items", section "Derived Types", section "Open Types and Dynamic Properties", section "The Wrapper Object", section "Control Information: type", and conformance clauses 3.3, 5.4, 13.1, 15 and 16.
+Build green.
 
 ---
 
@@ -307,12 +430,12 @@ section 14.
 | D‑05 | A positional array MUST have **exactly** as many items as the list — no omission, no truncation, no reordering. To send fewer properties, narrow the select-list. | Assistant | Provisional | §5.1 |
 | D‑06 | One uniform **wrapper object** carries annotations and control information wherever a value may appear: root, array position, collection member. | Hubert, Q1 | TC | §7.1 |
 | D‑07 | Property annotations **drop the property-name prefix**: `Orders@count` becomes `@count`, because the position identifies the property. | Hubert, Q1 | TC | §7.3 |
-| D‑08 | The wrapper's value is named **`_`**. `value` is recognized **only** where [OData-JSON] itself specifies it as the message body's value name — never where [OData-JSON] represents the body as the instance itself. | Hubert floated `_`; **narrowed in session 2** after a TC reviewer found the original wording extended [OData-JSON] and made a single-entity body ambiguous | Provisional | §7.1, open issue 4 |
-| D‑09 | A wrapper object **MUST NOT** carry data properties by name — only annotations and the value. | Assistant, to keep wrappers distinguishable from JSON-format objects | Provisional | §7.1, open issue 6 |
+| D‑08 | The wrapper's value is named **`$`**. `value` is recognized **only** where [OData-JSON] itself specifies it as the message body's value name — never where [OData-JSON] represents the body as the instance itself. | `_` (sessions 1–2) collided, being a valid simple identifier; **settled on `$` in session 3**, following [OData-CSDL] JSON, which reserves `$`-prefixed names for exactly this purpose | **TC** | §7.1, open issue 4 |
+| ~~D‑09~~ | ~~A wrapper object MUST NOT carry data properties by name — only annotations and the value.~~ **Superseded by D‑25.** | Assistant, to keep wrappers distinguishable from JSON-format objects | Superseded | §7.1, open issue 6 |
 | D‑10 | **PATCH** conveys "which properties to update" through the select-list; a property not in the positional property list is unchanged, one present with `null` is set to null. **No sentinel value.** | Assistant, consequence of D‑02 | Provisional | §8.4 |
 | D‑11 | Request bodies **MAY carry a context URL**, using response templates unchanged. Without one, the list is the default selection of the target type. | Assistant, required by D‑02 for requests | Provisional — **needs a Part 1 change** | §8.1, open issue 1 |
 | D‑12 | A **request** message body MAY be a bare JSON array (the request URL supplies the type). Responses always remain JSON objects. | Assistant | Provisional | §8.2 |
-| D‑13 | **`{}`**, the empty wrapper, means "not applicable" — a derived-type property on a non-derived instance, or a selected dynamic property the instance lacks. Distinct from `null`, which means "is null". | Assistant, required for losslessness | Provisional | §6.7, open issue 5 |
+| D‑13 | **`{}`**, the empty wrapper, means "not applicable". | Assistant, required for losslessness | **Narrowed by D‑27** to selected dynamic properties only | §6.8, open issue 5 |
 | D‑14 | **Derived types** are handled by `@type` in a wrapper; every instance in a collection shares one positional property list regardless of its type. Replaces the 2018 error 278. | Assistant, enabled by D‑01 | Provisional | §6.7 |
 | D‑15 | **Open types**: dynamic properties occupy a position only if explicitly selected; an instance with unselected dynamic properties falls back to the object representation. | 2018 proposal + D‑01 | Provisional | §6.8 |
 | D‑16 | **Delta payloads are in scope.** Added/changed entities are positional; deleted entities and links are not, having no select-list. | Hubert, Q2 | TC (scope), Provisional (treatment) | §9 |
@@ -324,6 +447,10 @@ section 14.
 | D‑22 | `streaming` remains meaningful and is **not forced** to `true`, departing from the 2018 position; a compact payload meeting the constraints must declare `streaming=true`. | Assistant | Provisional | §3.1, §4.3 |
 | D‑23 | CSDL **declaration order must be stable** for a given metadata document URL; services SHOULD reference versioned metadata from the context URL. | Assistant, forced by D‑02 + D‑04 | Provisional | §5.2, open issue 3 |
 | D‑24 | Examples use the **`Customers`/`Orders`/`Address`** model of the sibling specifications, not the `Cubes`/`Dimensions` model of the 2018 proposal. | Assistant, for house consistency | Provisional | throughout |
+| D‑25 | A wrapper object **MAY** carry data properties by name, after `$`, so that an open-type instance keeps its positional representation instead of falling back wholesale to the [OData-JSON] object form. A wrapper is then recognized by the presence of `$`, or by all of its members being annotations. **Supersedes D‑09.** | TC direction relayed in session 3 | **TC**, drafted | §6.8, §7.1, open issue 6 |
+| ~~D‑14~~ | ~~Every instance in a collection shares one positional property list; a derived-type property selected via a type cast occupies a position in every instance, and `{}` fills the gaps.~~ **Superseded by D‑26.** | Assistant, session 1 | Superseded | §6.7 |
+| D‑26 | The positional property list depends on the instance's **type** as well as the context URL: a type-cast select-item contributes a position only to instances of that type or a type derived from it. No gaps and no placeholders. Consequently `type` becomes load-bearing — a service **MUST** send it whenever an instance's list differs from that of the context URL's declared type, **irrespective of `metadata=none`**, and it must precede the positional representation. **Supersedes D‑14.** | TC direction relayed in session 3, in preference to gap-filling or grouping by type cast | **TC** | §5.2 step 3, §6.7, §7.5.3 |
+| D‑27 | `{}` is retained, but **only** for a selected dynamic property that an instance does not have. It is no longer a wrapper by the D‑25 recognition rule, and conveys "undefined" by convention; the TC accepted this explicitly. | Hubert, session 3 | **TC** | §6.8, §7.1, open issue 5 |
 
 ---
 
