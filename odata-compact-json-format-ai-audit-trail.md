@@ -11,7 +11,12 @@ It is **not** part of the specification and is not picked up by the document bui
 
 ## How to maintain this file
 
-- Add a new `## Session N` section per working session, newest last.
+- Add a new `## Session N` section per working session, newest last. Record
+  substantial changes and decisions, and also **discussions and decisions that
+  changed nothing in the document** --- an option weighed and dropped, or a review
+  comment judged unfounded, is exactly what gets asked about later and is otherwise
+  unrecoverable.
+- Date sessions from the git history, not from recollection.
 - Record decisions in the [Decision Register](#decision-register) with a stable
   `D‑nn` identifier. Never renumber; supersede instead, and mark the old row.
 - Distinguish clearly between **decisions taken by the TC or the editors** and
@@ -414,6 +419,91 @@ Build green.
 
 ---
 
+## Session 4 — 2026-08-28
+
+Two review comments, both organizational rather than technical, and both accepted.
+Committed as `146d4fa` and `c471f1e`.
+
+### "that property of arrays" — a term collision, not a word choice
+
+A reviewer found the fourth paragraph of the introduction confusing and proposed
+"feature" in place of "property":
+
+> JSON arrays preserve the order of their items, whereas the order of the
+> name/value pairs of a JSON object is not significant; this format uses that
+> **property** of arrays to convey, by position, which value belongs to which
+> **property**.
+
+The reviewer's instinct was right but the diagnosis understated it. "Property" is a
+defined term in this document, used several hundred times, and here it appeared
+twice in one clause with two different senses --- once meaning "characteristic",
+once meaning an OData structural property. No synonym fixes that well, which is why
+neither Hubert nor the reviewer was satisfied with "feature".
+
+*Resolution:* drop the abstract noun rather than replace it, and borrow RFC 8259's
+own vocabulary, which defines an array as an ordered sequence and an object as an
+unordered collection:
+
+> The items of a JSON array are **ordered**, whereas the name/value pairs of a JSON
+> object are not; this format relies on **that ordering** to convey, by position,
+> which value belongs to which property.
+
+*Alternative offered if a noun is wanted:* "guarantee" --- precise, and it carries
+weight "feature" does not, since the format's decodability genuinely rests on JSON
+guaranteeing array order. "Characteristic" also works but is heavier.
+
+The rest of the document was checked for the same collision: three other hits for
+"property of" / "that property", all legitimate OData uses. This was the only one.
+
+### The wrapper object was introduced after thirteen uses of it
+
+A reviewer observed that it is confusing to define the wrapper object in section 7,
+after it has already been used to describe annotations, control information and
+dynamic properties. Hubert asked whether reordering would also let it be described
+more easily.
+
+Measured before acting: **thirteen** references to the wrapper preceded its
+definition, in sections 1, 3, 4, 5 and 6.
+
+The diagnosis was that the section was *mis-filed*, not merely mis-ordered. When it
+was drafted the wrapper existed only to hold annotations, so the annotations chapter
+was the right home. Since D‑25 it also carries data properties by name, and since
+D‑26 it carries the `type` control information that a receiver needs in order to
+decode the positional array at all. Of the four things it now carries, only one is
+an annotation. It had become the format's second structural construct while still
+being filed as an annotations mechanism.
+
+*Resolution (D‑28).* Chapter 4 was renamed "Compact Representations" and now defines
+both constructs the format adds; "Common Characteristics" moved to chapter 5, so its
+three references to the wrapper became back-references. The wrapper is section 4.5,
+immediately before 4.6 Position Values, which is the first place that needs it.
+Forward references fell from thirteen to three, all of them legitimate: the glossary
+entry that *is* the definition, the chapter's own statement of what it will define,
+and one rationale aside in section 3.1.
+
+Hubert's guess that it would also be easier to *describe* proved right. Filed under
+annotations, the wrapper had to be introduced as somewhere for annotations to live.
+Next to the positional representation it can be introduced by the constraint that
+actually creates it --- a JSON array has no name/value pairs, and the containing
+instance is no help because it may itself be an array --- which covers all four
+things it carries instead of one.
+
+`Positional Representation` was kept as section 4.1 rather than folded into the
+chapter title, so the `PositionalRepresentation` anchor survives; no cross-reference
+broke, since references here resolve by name rather than by number. The section 1.1.1
+glossary entry, which still described the wrapper as carrying only annotations and
+control information, was updated --- it had been stale since D‑25.
+
+### Recording practice
+
+Hubert asked that this trail be kept current for substantial changes and decisions,
+and also for important discussions and decisions that do not change the document.
+Both changes above had initially been left out of the register on the grounds that
+they were editorial rather than design decisions; that judgment was wrong, and the
+maintenance rules at the top of this file have been widened accordingly.
+
+---
+
 ## Decision Register
 
 Status values: **TC** — decided by the TC or by the editor in this session;
@@ -451,6 +541,7 @@ section 14.
 | ~~D‑14~~ | ~~Every instance in a collection shares one positional property list; a derived-type property selected via a type cast occupies a position in every instance, and `{}` fills the gaps.~~ **Superseded by D‑26.** | Assistant, session 1 | Superseded | §6.7 |
 | D‑26 | The positional property list depends on the instance's **type** as well as the context URL: a type-cast select-item contributes a position only to instances of that type or a type derived from it. No gaps and no placeholders. Consequently `type` becomes load-bearing — a service **MUST** send it whenever an instance's list differs from that of the context URL's declared type, **irrespective of `metadata=none`**, and it must precede the positional representation. **Supersedes D‑14.** | TC direction relayed in session 3, in preference to gap-filling or grouping by type cast | **TC** | §5.2 step 3, §6.7, §7.5.3 |
 | D‑27 | `{}` is retained, but **only** for a selected dynamic property that an instance does not have. It is no longer a wrapper by the D‑25 recognition rule, and conveys "undefined" by convention; the TC accepted this explicitly. | Hubert, session 3 | **TC** | §6.8, §7.1, open issue 5 |
+| D‑28 | Chapter 4, **"Compact Representations"**, defines both constructs the format adds — the positional representation and the wrapper object (§4.5) — and "Common Characteristics" moves to chapter 5. The wrapper is no longer filed under annotations, since three of the four things it carries are not annotations. | Reviewer comment, session 4; forward references to the wrapper fell from 13 to 3 | **TC** (reviewer-driven) | §4, §5, §7 |
 
 ---
 
@@ -480,20 +571,32 @@ changing the JSON format itself to reach it. The constructs currently *without* 
 positional counterpart are listed in D‑17. Is that list acceptable, or should
 some of them drive JSON format changes?
 
-### 2. Naming and encoding — cheap to change now, expensive after CSD01
+### 2. Settled since — kept here for the record, no action needed
 
-- **Open issue 4:** the value name (D‑08). Narrowed in session 2 to what
-  [OData-JSON] itself permits. Still open: `_` carries the same collision risk
-  that `value` does, and is not reserved in the model.
-- **Open issue 5:** `{}` for "not applicable" (D‑13). `null` is two bytes shorter
-  but not lossless.
-- **Open issue 6:** whether wrapper objects may carry named properties (D‑09).
-  Allowing it would let open-type instances stay positional and would remove the
-  fallback in §6.8 — attractive, but it makes a wrapper indistinguishable from a
-  JSON format object.
-- **Open issue 7:** whether `compact` should take a value (`compact=rows`) to
-  leave room for a future columnar or dictionary-encoded variant. You chose the
-  boolean form; this is the door left open.
+- **Open issue 4: the value name (D‑08).** Settled on `$` in session 3, following
+  CSDL JSON. `_` collided, being a valid simple identifier; `@` was rejected
+  because existing parsers branch on a leading `@`; the empty string was rejected
+  as silently typo-fragile.
+- **Open issue 5: `{}` (D‑13, narrowed by D‑27).** Retained, but now only for a
+  selected dynamic property an instance does not have. You accepted that it
+  conveys "undefined" by convention rather than as a consequence of the wrapper
+  definition.
+- **Open issue 6: wrapper objects carrying named properties (D‑09 → D‑25).**
+  Resolved in the affirmative and drafted.
+- **Open issue 7: `compact=true` versus `compact=<variant>`.** You chose the
+  boolean form; this remains the door left open for a future columnar variant, and
+  D‑26 (heterogeneous row shapes) now makes that variant harder to add later.
+
+### 2a. Session 4 judgment calls — veto if you disagree
+
+- **Chapter 4 is titled "Compact Representations".** It now covers both the
+  positional representation and the wrapper object, so the old title
+  "Positional Representation" would under-describe it. That title survives as
+  section 4.1, which also preserves every cross-reference.
+- **"Common Characteristics" now follows the constructs, as chapter 5.** This
+  departs from OData-JSON's running order, where Common Characteristics is
+  section 4. It moved because three of its references were to a construct defined
+  later.
 
 ### 3. Not yet specified — needs drafting once the above settle
 
@@ -507,13 +610,25 @@ some of them drive JSON format changes?
 - **Open issue 12:** whether a collection must be homogeneous in its
   representation, which a receiver optimized for the positional case may prefer.
 - **Open issue 13:** how the `/$count` segment appears in the context URL —
-  underspecified in Part 1 and the JSON format, and §7.3's example assumes it is
-  retained.
+  underspecified in Part 1 and the JSON format, and the example under
+  "Property Annotations" assumes it is retained.
+- **Open issue 6, residual:** a property must not appear both positionally and by
+  name, but the draft places no obligation on a receiver to detect a producer that
+  breaks this, and does not say which wins.
 
 ### 4. Housekeeping
 
-- **Build environment.** `npm install` plus Pandoc 3.8.3 are needed;
-  commit `d68385e` shows the build was run successfully and its output committed
-  to `docs/odata-compact-json-format/` (HTML, Markdown and PDF).
+- **Build environment.** `npm install` plus Pandoc 3.8.3 are needed. Note that the
+  generated products under `docs/` are **not** committed on this branch --- only the
+  Markdown sources are; regeneration happens separately on its own branch. Sessions
+  2 to 4 used `npm run build` to validate, which rewrites `docs/` as a side effect;
+  from session 4 onwards validation runs `lib/number.js` into a throwaway stream
+  instead, optionally piping through Pandoc into a temp directory, so the working
+  tree is left alone.
 - **Section 14 (Open Issues) must be removed** before the document advances to
   Committee Specification.
+- **One JSON example does not parse standalone** and is not meant to: the
+  `Capabilities.SupportedFormats` fragment under "Advertising Support" is a
+  name/value pair shown out of context, as the sibling specifications also show
+  annotations. Pandoc reports no lexer error, so `npm run select ".json .er"`
+  does not flag it.
