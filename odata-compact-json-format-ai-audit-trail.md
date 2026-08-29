@@ -504,6 +504,154 @@ maintenance rules at the top of this file have been widened accordingly.
 
 ---
 
+## Session 5 — 2026-08-28
+
+Opened as a discussion; the select-list requirement was settled and drafted in
+the same session. The two follow-on items were deliberately left undrafted.
+
+### Proposal: the select-list MUST always appear in the context URL
+
+The TC looked more closely at how the positional property list is determined
+(sections 4.3 and 8.1, which currently define two routes: an explicit select-list,
+or a *default selection* derived from the CSDL document) and concluded that there is
+no good definition, against the CSDL document as it stands, of what that default
+selection is. The proposal is that a compact payload MUST always carry an explicit
+select-list in its context URL.
+
+Hubert's argument is sharper than the one recorded under open issue 3 in session 1.
+That issue was framed as *declaration order is not normatively stable, so it might
+change between metadata versions*. The stronger form is: **a service always knows
+which version of the CSDL document it used; a client composing a request payload may
+not know, and cannot determine it from the payload alone.** Enumerating the
+select-list moves the knowledge to the only party that reliably has it. That
+reasoning applies to responses and applies with more force to requests.
+
+*Assessment:* accept. It closes open issue 3 outright, retires D‑04 and D‑23, and
+removes two of the five steps in section 4.3. The cost is one select-list per
+payload, weighed against N instances --- negligible for the large collections this
+format targets, and a single-instance compact payload was already a net loss under
+design principle 2.
+
+*Consequences identified that the proposal had not yet priced:*
+
+1. **`*` must be forbidden as well.** Step 2 of section 4.3 expands `*` into the
+   structural properties in declaration order --- the very dependency being removed.
+   The same applies to the `{namespace}.*` operation shortcut (open issue 9) and to
+   the [OData-Protocol] rule that a select-list containing only expanded navigation
+   properties implicitly selects all structural properties. If any of the three
+   survives, the requirement is hollow.
+2. **Section 8.2, the bare JSON array request body, must go**, and with it D‑12. Its
+   whole premise was that the request URL supplies the type and the default
+   selection supplies the list; with no context URL it cannot carry a select-list.
+3. **Action and function parameter values lose the positional representation**
+   (section 8.8), which currently derives the list from the default selection of the
+   parameter's declared type. Parameters have no context URL. Either positional
+   parameter values are given up, or something new is needed --- and an action taking
+   a large collection parameter is squarely a compact-JSON use case.
+4. **Open issue 1 changes from a nicety to a blocker.** A compact request body may
+   currently carry `@context`; under this rule it MUST. The Part 1 change that would
+   sanction context URLs in request bodies is then load-bearing: without it, compact
+   request payloads cannot be specified at all.
+
+### Proposal: control information in the positional representation
+
+Following from the above, the TC is considering allowing control information, and
+selected instance annotations, to occupy positions in the positional representation.
+
+Note that selected *instance annotations* already do --- see "Selected Annotations".
+It is control information that would be new.
+
+*Assessment:* valuable, and it repairs the weakest point in the current draft.
+Section 3.1 currently says `metadata=full` is NOT RECOMMENDED precisely because full
+metadata forces every instance into a wrapper object, inverting the format's
+purpose. If `@id` and `@etag` can occupy positions, that inversion disappears:
+
+```json
+{ "@id": "Customers('ALFKI')", "@etag": "W/\"1\"", "$": ["ALFKI", "Alfreds"] }
+```
+
+becomes
+
+```json
+[ "Customers('ALFKI')", "W/\"1\"", "ALFKI", "Alfreds" ]
+```
+
+which drops two names, the `$` name and the braces from every instance --- in exactly
+the case, an updatable collection carrying ids and etags, where compact JSON
+currently degrades worst. D‑20 would then be worth revisiting.
+
+*Problems to solve before this can be drafted:*
+
+1. **`type` in a position is circular.** Under D‑26 the positional property list
+   depends on the instance's type, so reading `@type` out of a position requires
+   already knowing the list. Resolvable by requiring control-information items to
+   form a *type-independent prefix* --- they must precede any type-cast-qualified
+   item --- so that the leading positions are identical for every instance in the
+   collection. That constrains where such items may appear in the select-list and
+   must be stated normatively.
+2. **Absence.** `@etag` may be absent on some instances. This is the same situation
+   as a selected dynamic property an instance does not have, so `{}` (D‑27) reuses
+   cleanly and no new mechanism is needed.
+3. **The cross-specification ask is larger than open issue 1.** `$select` supports
+   instance annotations today, but not control information: `@id`, `@etag` and
+   `@count` are not terms and are not selectable. Extending the select-list to admit
+   them is a change to Part 1 and Part 2, and a bigger one than adding request-body
+   context URL templates.
+
+*Suggested staging:* adopt the mandatory select-list first, since it stands on its
+own and simplifies the document; pursue control information in positions as a
+follow-on, once the select-list extension has been discussed with the TC.
+
+### Resolution
+
+Hubert answered each of the four consequences.
+
+1. **`*`.** Confirmed: `*` must go from the *context URL*, replaced by the explicit
+   positional list. But `*` in `$select` or `$expand` remains perfectly valid --- the
+   restriction is on the context URL, not on the request. The service resolves the
+   query as it normally would and then enumerates what it actually placed in the
+   positional representation, and may still convey further dynamic properties by
+   name in a wrapper object. This distinction is now stated explicitly in the draft,
+   because the requirement reads as far more restrictive than it is without it.
+
+2. **The bare JSON array request body.** Hubert noted this is invalid under OData in
+   any case: [OData-JSON](#ODataJSON) wraps request bodies in an object
+   *deliberately*, so there is always somewhere for control information and
+   annotations to go, and so that the body's shape does not vary with whether such
+   information happens to be present. So D‑12, introduced by the assistant in
+   session 1, was wrong on its own terms and not merely incompatible with the new
+   rule --- it had quietly contradicted a considered decision in the base format.
+   Removed, and the reason is now recorded in section 8.2 rather than left implicit.
+
+3. **Action and function parameters.** Accepted as a real loss worth solving, not a
+   technicality. Hubert's position: *the fact that a context URL has never needed to
+   carry this information --- the case arises only in request payloads --- is no
+   reason not to add it.* The TC will craft one or more proposals and discuss them
+   before anything is adopted. The draft therefore forbids positional parameter
+   values for now and says plainly that this is a limitation awaiting a mechanism,
+   rather than presenting it as a considered exclusion. Open issue 14.
+
+4. **`type` in a position.** Hubert proposed a stricter and simpler rule than the
+   assistant's "type-independent prefix": if type information is conveyed
+   positionally, `type` MUST occupy the **first** position of the array. This is the
+   minimal sufficient constraint --- `type` is the only thing that must be readable
+   before the positional property list is known, so it is the only thing whose
+   position must be fixed. Recorded in open issue 15, pending the larger question of
+   extending the select-list to admit control information at all.
+
+### Drafted
+
+Nine sites depended on a default selection; all are now gone. Section 4.3 lost two
+of its five steps and gained the requirement and its rationale; the two examples
+that relied on implicit selection were rewritten to show a service enumerating what
+it returned; the nested-select-list default was removed; section 8.1 now requires
+`context` in every compact request body; section 8.2 was rewritten around
+[OData-JSON](#ODataJSON)'s reason for wrapping; section 8.8 forbids positional
+parameter values; conformance clauses 3.1, 13, 18 and 22 were restated. Open issue 3
+is closed, and open issues 14 and 15 were opened. Validated with no undefined links.
+
+---
+
 ## Decision Register
 
 Status values: **TC** — decided by the TC or by the editor in this session;
@@ -541,6 +689,12 @@ section 14.
 | ~~D‑14~~ | ~~Every instance in a collection shares one positional property list; a derived-type property selected via a type cast occupies a position in every instance, and `{}` fills the gaps.~~ **Superseded by D‑26.** | Assistant, session 1 | Superseded | §6.7 |
 | D‑26 | The positional property list depends on the instance's **type** as well as the context URL: a type-cast select-item contributes a position only to instances of that type or a type derived from it. No gaps and no placeholders. Consequently `type` becomes load-bearing — a service **MUST** send it whenever an instance's list differs from that of the context URL's declared type, **irrespective of `metadata=none`**, and it must precede the positional representation. **Supersedes D‑14.** | TC direction relayed in session 3, in preference to gap-filling or grouping by type cast | **TC** | §5.2 step 3, §6.7, §7.5.3 |
 | D‑27 | `{}` is retained, but **only** for a selected dynamic property that an instance does not have. It is no longer a wrapper by the D‑25 recognition rule, and conveys "undefined" by convention; the TC accepted this explicitly. | Hubert, session 3 | **TC** | §6.8, §7.1, open issue 5 |
+| ~~D‑04~~ | ~~Where structural properties are implicitly selected, they are prepended in CSDL declaration order, base type first.~~ **Retired by D‑29** — nothing is implicitly selected any more. | Assistant, session 1 | Retired | — |
+| ~~D‑12~~ | ~~A request message body MAY be a bare JSON array, the request URL supplying the type.~~ **Retired by D‑29.** Also wrong independently: [OData-JSON] wraps request bodies in an object deliberately, so that control information always has a place and the body's shape does not vary. | Assistant, session 1 | Retired | §8.2 |
+| ~~D‑23~~ | ~~CSDL declaration order must be stable for a given metadata document URL; services SHOULD reference versioned metadata.~~ **Retired by D‑29** — the dependency on declaration order is gone. | Assistant, session 1 | Retired | — |
+| D‑29 | The context URL of a compact payload **MUST** carry a select-list enumerating every property conveyed positionally, at every level; `*` and `{namespace}.*` are forbidden and implicit selection does not apply. This constrains the **context URL, not the request**: `$select=*` and an absent `$select` stay valid, and the service enumerates what it returned. **Retires D‑04, D‑12, D‑23; closes open issue 3.** | TC, session 5. A service always knows which CSDL version it used; a client composing a request body does not and cannot learn it from the payload | **TC** | §4.3, §8.1, §8.2, §13 |
+| D‑30 | A parameter value of an action or function **MUST NOT** use the positional representation, there being no context URL for a parameter payload. Recorded as a limitation awaiting a mechanism, not a considered exclusion. | Consequence of D‑29; TC to propose a mechanism | **TC**, provisional pending open issue 14 | §8.8 |
+| D‑31 | If type information is conveyed positionally, `type` **MUST** occupy the first position of the array. Minimal sufficient rule, `type` being the only thing that must be read before the positional property list is known. | Hubert, session 5, in preference to the assistant's broader "type-independent prefix" | **TC** (in principle), not drafted — gated on open issue 15 | open issue 15 |
 | D‑28 | Chapter 4, **"Compact Representations"**, defines both constructs the format adds — the positional representation and the wrapper object (§4.5) — and "Common Characteristics" moves to chapter 5. The wrapper is no longer filed under annotations, since three of the four things it carries are not annotations. | Reviewer comment, session 4; forward references to the wrapper fell from 13 to 3 | **TC** (reviewer-driven) | §4, §5, §7 |
 
 ---
@@ -551,20 +705,23 @@ Ordered by how much rework a late reversal would cause.
 
 ### 1. Cross-part dependency — raise with the TC early
 
-**Open issue 1: context URLs in request bodies (D‑11).** Part 1 states that
-request payloads generally do not require context URLs, and defines a request-body
-template only for `#$delta`. The entire request story — create, PATCH, deep
-insert, bind — depends on response context URL templates appearing in POST/PUT/PATCH
-bodies. This needs a Part 1 change, or a different mechanism that would contradict
-design principle 3. Everything in section 8 rests on this.
+**Open issue 1: context URLs in request bodies (D‑11) — now a blocker, not a
+nicety.** Part 1 states that request payloads generally do not require context
+URLs, and defines a request-body template only for `#$delta`. Since D‑29 a compact
+request body MUST carry one, so without a Part 1 change compact request payloads
+cannot be specified at all. Everything in chapter 8 rests on this.
 
-**Open issue 3: stability of property order (D‑23).** CSDL does not currently make
-declaration order significant, so a service may reorder properties without
-considering it breaking. The draft imposes a stability requirement and recommends
-versioned metadata URLs. The alternative — requiring an explicit `$select` in
-every compact payload, removing the dependency entirely — is more honest but
-costs bytes and constrains clients. Possibly a Core vocabulary term fixing each
-property's ordinal.
+**Open issue 14: positional parameter values (D‑30).** A parameter payload has no
+context URL and Part 1 defines no template for one, so positional values are
+currently forbidden there — a real loss, since a bulk action taking a large
+collection is exactly a compact-JSON use case. You want proposals crafted and
+discussed with the TC first; nothing has been drafted.
+
+**Open issue 15: control information in positions (D‑31).** Would repair the D‑20
+inversion whereby `metadata=full` forces every instance into a wrapper. `$select`
+admits instance annotations but not `@id`/`@etag`/`@count`, so this needs a Part 1
+and Part 2 change larger than open issue 1. The `type`-first rule is settled in
+principle; the select-list extension is not.
 
 **Open issue 2: the 100% losslessness goal.** You said the TC would consider
 changing the JSON format itself to reach it. The constructs currently *without* a
@@ -573,6 +730,9 @@ some of them drive JSON format changes?
 
 ### 2. Settled since — kept here for the record, no action needed
 
+- **Open issue 3: property order (D‑23 → D‑29).** Closed in session 5. The draft no
+  longer derives the positional property list from the CSDL document at all, so
+  declaration order and versioned metadata URLs are no longer load-bearing.
 - **Open issue 4: the value name (D‑08).** Settled on `$` in session 3, following
   CSDL JSON. `_` collided, being a valid simple identifier; `@` was rejected
   because existing parsers branch on a leading `@`; the empty string was rejected
