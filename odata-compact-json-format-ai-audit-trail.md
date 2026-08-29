@@ -652,6 +652,104 @@ is closed, and open issues 14 and 15 were opened. Validated with no undefined li
 
 ---
 
+## Session 6 — 2026-08-28
+
+Discussion, plus a correction to the assistant's assessment of open issue 15. No
+normative text changed; the open issues were restructured.
+
+### Control information in positions: the ask is smaller than recorded
+
+Session 5 recorded that admitting control information into the positional
+representation "is a change to Part 1 and Part 2, and a bigger one than open issue
+1". **That was wrong**, and Hubert's reasoning shows why.
+
+The select-list in a *context URL* is written by the service, not by the client. The
+context URL describes what the payload contains; `$select` is what the client asked
+for. D‑29 already turns on that distinction --- a service resolves `$select=*`, or no
+`$select` at all, and then enumerates what it actually returned. Whether `@id` and
+`@etag` appear in a response is driven by the protocol, the model and the service's
+own choice, exactly as it already is in OData-JSON; a client is not surprised to
+receive them, in a wrapper object or positionally. As Hubert put it, it would be
+very odd to change `$select` for this.
+
+So `$select` is untouched, and only the context URL grammar is affected. That is a
+materially smaller ask than the one recorded in session 5, and smaller than issue 1
+rather than larger.
+
+`type` is the one piece that differs, being included only when it is needed to
+distinguish the declared type from the actual type. But that too is the service's
+decision, and the service may put it in the wrapper or at the first position of the
+positional array as it sees fit.
+
+### Four points added to open issue 15
+
+Working through the consequences surfaced four that had not been stated:
+
+- **`count` and `nextLink` are out of scope.** They apply to a collection, not to an
+  instance, so they have no per-instance position. Session 5 had wrongly cited
+  `count` as an example of eligible control information; the eligible set is the
+  instance-scoped information --- `id`, `etag`, `type`, `editLink`, `readLink` and
+  the media ones.
+- **Whether the ABNF can separate the two select-lists.** The context URL grammar is
+  the [OData-ABNF] rule `context`. If its select-list shares the `selectItem` rule
+  with `$select`, admitting control information in one but not the other needs a
+  distinct rule rather than a widened shared one. This is the whole of the remaining
+  cross-specification ask and should be checked before the proposal is written.
+- **No duplication.** If the select-list places `type` at position 0, the wrapper
+  object around that instance must not also carry it.
+- **The base-type cost.** If `type` occupies position 0 then every instance carries
+  something there, including instances of the declared type, which would use `{}`.
+  That trades a small fixed cost on every instance against removing the wrapper from
+  every derived instance; which wins depends on how derived-heavy the collection is.
+  Since the service chooses per payload, the draft should say so rather than leave
+  producers to guess.
+
+### Open issues 1 and 14 merged
+
+Agreed with Hubert: the two missing context URL templates --- one for request bodies,
+one for action and function parameter payloads --- go to the TC as a single proposal.
+Issue 1 now carries both as 1(a) and 1(b); issue 14 remains as a pointer so that
+existing references do not break, and section 8.8 now points at 1(b).
+
+
+### Review: a wrongly renamed `value` in the property-annotation example
+
+Hubert reported that the `Core.ValueException` example in "Property Annotations"
+showed the annotation's own value as `{ "$": "1234567890123456789" }`, where the
+[OData-JSON](#ODataJSON) form has `{ "value": "1234567890123456789" }`.
+
+**The report was correct.** `Core.ValueException` is a complex-typed term whose type
+declares a property named `value` --- [OData-JSON](#ODataJSON) says the exact value
+goes in "the `value` property of the annotation". It is a model-defined property
+name, not the reserved name of a wrapper object's value, and renaming it to `$` was
+simply wrong. The error was introduced in session 1, when the example was first
+written with `_`, and the session 3 rename carried it into `$` unexamined.
+
+Two things came out of it.
+
+*The draft was missing a rule.* Nothing said that the *value* of an annotation is
+represented as defined in [OData-JSON](#ODataJSON) and is never conveyed
+positionally. It follows from D‑29 --- a positional representation needs a
+select-list, and no select-list applies to an annotation's value --- but it was
+nowhere stated, which is precisely how the mistake survived. The chapter introduction
+now states it, and calls out the `value`-named-property case by name.
+
+*The other half of the report was not an error, but the confusion was fair.* Hubert
+also observed that `$` "is always of array type containing the positional property
+values", which it is not here: the outer wrapper has `"$": 1234567890123456800`, a
+number. That is correct and necessary --- a wrapper standing at the position of a
+primitive property must hold that primitive under `$`, or an annotated primitive
+property could not be represented at all. But every other example in the document
+shows `$` holding an array, so the reading was a reasonable one to arrive at.
+[Section ##TheWrapperObject] now says explicitly what `$` may hold --- a positional
+representation, an [OData-JSON](#ODataJSON) object, a collection, or a primitive ---
+and the example's caption points out why it is a number in this instance.
+
+*Audit:* every non-array use of `"$"` in the document was checked. There were two,
+both in this example: the erroneous one, now fixed, and the correct primitive.
+
+---
+
 ## Decision Register
 
 Status values: **TC** — decided by the TC or by the editor in this session;
@@ -711,17 +809,16 @@ URLs, and defines a request-body template only for `#$delta`. Since D‑29 a com
 request body MUST carry one, so without a Part 1 change compact request payloads
 cannot be specified at all. Everything in chapter 8 rests on this.
 
-**Open issue 14: positional parameter values (D‑30).** A parameter payload has no
-context URL and Part 1 defines no template for one, so positional values are
-currently forbidden there — a real loss, since a bulk action taking a large
-collection is exactly a compact-JSON use case. You want proposals crafted and
-discussed with the TC first; nothing has been drafted.
+Issue 1 now also covers parameter payloads (former issue 14, D‑30), the two being
+put to the TC as one proposal.
 
 **Open issue 15: control information in positions (D‑31).** Would repair the D‑20
-inversion whereby `metadata=full` forces every instance into a wrapper. `$select`
-admits instance annotations but not `@id`/`@etag`/`@count`, so this needs a Part 1
-and Part 2 change larger than open issue 1. The `type`-first rule is settled in
-principle; the select-list extension is not.
+inversion whereby `metadata=full` forces every instance into a wrapper. Downgraded
+in session 6: because the context URL's select-list is service-authored, `$select`
+is untouched and only the context URL grammar is affected. The remaining question is
+whether the [OData-ABNF] `context` rule can admit control information without
+widening `selectItem` and so changing `$select` too — worth checking before the
+proposal is written. The `type`-first rule (D‑31) is settled in principle.
 
 **Open issue 2: the 100% losslessness goal.** You said the TC would consider
 changing the JSON format itself to reach it. The constructs currently *without* a
